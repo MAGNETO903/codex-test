@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Алхимия</title>
+<style>
+body, html {margin:0;padding:0;font-family:Arial, sans-serif;background:#fafafa;color:#333;}
+#menu, #game, #inventory, #store, #recipes, #settings, #daily, #leaderboard {display:none;padding:20px;}
+header {background:#4CAF50;color:white;padding:10px;text-align:center;}
+button {padding:10px;margin:5px;}
+.grid {display:flex;flex-wrap:wrap;gap:10px;}
+.item {width:60px;height:60px;font-size:32px;display:flex;align-items:center;justify-content:center;border:1px solid #ccc;border-radius:8px;background:white;cursor:grab;}
+#board {min-height:300px;border:2px dashed #ccc;padding:10px;margin-top:10px;display:flex;flex-wrap:wrap;gap:10px;}
+#adOverlay {position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);color:white;display:flex;align-items:center;justify-content:center;font-size:24px;z-index:1000;display:none;flex-direction:column;}
+</style>
+</head>
+<body>
+<header>Алхимия</header>
+<div id="mainmenu">
+<button onclick="show('menu')">Начать игру</button>
+<button onclick="show('recipes')">Книга рецептов</button>
+<button onclick="show('inventory')">Инвентарь</button>
+<button onclick="show('store')">Магазин</button>
+<button onclick="show('daily')">Ежедневные награды</button>
+<button onclick="show('leaderboard')">Лидеры</button>
+<button onclick="show('settings')">Настройки</button>
+</div>
+<div id="menu">
+<h2>Алхимический стол</h2>
+<div id="board" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+</div>
+<div id="inventory">
+<h2>Инвентарь <span id="coins"></span></h2>
+<div id="items" class="grid"></div>
+<button onclick="show('menu')">Назад</button>
+</div>
+<div id="store">
+<h2>Магазин подсказок</h2>
+<p>Стоимость подсказки: 10 монет</p>
+<button onclick="buyHint()">Купить подсказку</button>
+<div id="hint"></div>
+<button onclick="show('mainmenu')">Назад</button>
+</div>
+<div id="recipes">
+<h2>Книга рецептов</h2>
+<ul id="recipeList"></ul>
+<button onclick="show('mainmenu')">Назад</button>
+</div>
+<div id="settings">
+<h2>Настройки</h2>
+<label>Имя игрока: <input id="playerName"/></label>
+<button onclick="saveSettings()">Сохранить</button>
+<button onclick="show('mainmenu')">Назад</button>
+</div>
+<div id="daily">
+<h2>Ежедневные награды</h2>
+<div id="calendar"></div>
+<button onclick="claimDaily()">Получить награду</button>
+<button onclick="show('mainmenu')">Назад</button>
+</div>
+<div id="leaderboard">
+<h2>Таблица лидеров</h2>
+<ol id="leaders"></ol>
+<button onclick="show('mainmenu')">Назад</button>
+</div>
+<div id="adOverlay"><div id="adText"></div><div id="adTimer"></div></div>
+<script>
+const baseElements = {"Огонь":"🔥","Вода":"💧","Земля":"🪨","Воздух":"🌬️"};
+let recipes = {
+"Огонь+Вода":{"name":"Пар","emoji":"💨","desc":"Горячий пар"},
+"Вода+Земля":{"name":"Грязь","emoji":"🪱","desc":"Мокрая земля"},
+"Воздух+Огонь":{"name":"Энергия","emoji":"⚡","desc":"Молния"}
+};
+let inventory = JSON.parse(localStorage.getItem('inventory'))||{};
+let coins = parseInt(localStorage.getItem('coins')||'0');
+let discovered = JSON.parse(localStorage.getItem('discovered'))||{};
+function init(){if(!localStorage.getItem('player'))localStorage.setItem('player','Игрок');document.getElementById('playerName').value=localStorage.getItem('player');for(let k in baseElements){if(!inventory[k])inventory[k]=1;discovered[k]=true;}saveData();updateInventory();updateRecipes();updateCoins();loadLeaderboard();checkDaily();}
+function saveData(){localStorage.setItem('inventory',JSON.stringify(inventory));localStorage.setItem('coins',coins);localStorage.setItem('discovered',JSON.stringify(discovered));}
+function updateInventory(){let div=document.getElementById('items');div.innerHTML='';for(let k in inventory){let el=document.createElement('div');el.className='item';el.draggable=true;el.ondragstart=ev=>drag(ev,k);el.ondblclick=()=>duplicate(k);el.innerText=baseElements[k]||recipes[k]?.emoji||'❓';el.title=k+ (inventory[k]>1?' x'+inventory[k]:'');div.appendChild(el);}document.getElementById('coins').innerText=`Монеты: ${coins}`;}
+function updateRecipes(){let ul=document.getElementById('recipeList');ul.innerHTML='';for(let comb in recipes){if(discovered[recipes[comb].name]){let li=document.createElement('li');li.textContent=`${comb} => ${recipes[comb].name} ${recipes[comb].emoji} - ${recipes[comb].desc}`;ul.appendChild(li);}}
+}
+function drag(ev,name){ev.dataTransfer.setData('text',name);}function allowDrop(ev){ev.preventDefault();}function drop(ev){ev.preventDefault();let name=ev.dataTransfer.getData('text');createOnBoard(name);}function createOnBoard(name){let el=document.createElement('div');el.className='item';el.innerText=baseElements[name]||recipes[name]?.emoji||'❓';el.onclick=()=>remove(el);el.ondblclick=()=>duplicate(name);el.dataset.name=name;document.getElementById('board').appendChild(el);}function remove(el){el.remove();}
+function duplicate(name){inventory[name]=(inventory[name]||0)+1;saveData();updateInventory();}
+function combine(a,b){let key=a+"+"+b;let r=recipes[key];if(r){inventory[r.name]=(inventory[r.name]||0)+1;discovered[r.name]=true;coins++;saveData();updateInventory();updateRecipes();showAd('inter');}}
+document.getElementById('board').addEventListener('dragend',function(ev){let board=document.getElementById('board');let items=board.querySelectorAll('.item');if(items.length>=2){let a=items[items.length-2].dataset.name;let b=items[items.length-1].dataset.name;combine(a,b);}});
+function show(id){['menu','inventory','store','recipes','settings','daily','leaderboard','mainmenu'].forEach(x=>document.getElementById(x).style.display='none');document.getElementById(id).style.display='block';if(id==='inventory')updateInventory();}
+function buyHint(){if(coins>=10){coins-=10;let unknown=Object.keys(recipes).filter(c=>!discovered[recipes[c].name]);if(unknown.length){let r=recipes[unknown[0]];document.getElementById('hint').innerText=`Попробуйте соединить ${unknown[0]}`;}else{document.getElementById('hint').innerText='Все рецепты открыты';}saveData();updateCoins();}else alert('Недостаточно монет');}
+function updateCoins(){document.querySelectorAll('#coins').forEach(el=>el.innerText=`Монеты: ${coins}`);}
+function saveSettings(){localStorage.setItem('player',document.getElementById('playerName').value);show('mainmenu');}
+function showAd(type){let overlay=document.getElementById('adOverlay');let text=document.getElementById('adText');let timer=document.getElementById('adTimer');overlay.style.display='flex';let t=type==='reward'?15:5;text.innerText=type==='reward'?'Рекламное видео':'Реклама';let int=setInterval(()=>{timer.innerText=`${t--}...`;if(t<0){clearInterval(int);overlay.style.display='none';if(type==='reward'){coins+=5;updateCoins();saveData();}}},1000);}
+function checkDaily(){let last=localStorage.getItem('lastDaily');let today=new Date().toDateString();if(last!==today){document.getElementById('calendar').innerText='Можно получить награду!';}else{document.getElementById('calendar').innerText='Награда получена';}}
+function claimDaily(){let today=new Date().toDateString();let last=localStorage.getItem('lastDaily');if(last!==today){coins+=3;localStorage.setItem('lastDaily',today);saveData();updateCoins();checkDaily();alert('Награда получена!');}else alert('Уже получено');}
+function loadLeaderboard(){let board=JSON.parse(localStorage.getItem('leaderboard'))||[];let player=localStorage.getItem('player');let count=Object.keys(discovered).length;let entry=board.find(b=>b.name===player);if(entry)entry.score=count;else board.push({name:player,score:count});board.sort((a,b)=>b.score-a.score);localStorage.setItem('leaderboard',JSON.stringify(board));let ol=document.getElementById('leaders');ol.innerHTML='';board.slice(0,10).forEach(b=>{let li=document.createElement('li');li.textContent=`${b.name}: ${b.score}`;ol.appendChild(li);});}
+window.onload=init;
+</script>
+</body>
+</html>
